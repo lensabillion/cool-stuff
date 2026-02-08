@@ -3,8 +3,11 @@ uvicorn[standard]
 motor
 pydantic-settings
 python-dotenv
-passlib[bcrypt]
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.0
 python-jose[cryptography]
 email-validator
 pymongo
 REQ
+
+

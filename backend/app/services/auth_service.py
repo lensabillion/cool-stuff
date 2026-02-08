@@ -1,26 +1,51 @@
 from datetime import datetime, timezone
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from pymongo import ASCENDING
-from app.core.security import hash_password, verify_password
+from bson import ObjectId
 
-USERS_COL = "users"
+from app.core.database import auth_db
+from app.core.security import hash_password, verify_password, create_access_token
 
-async def ensure_auth_indexes(auth_db: AsyncIOMotorDatabase) -> None:
-    await auth_db[USERS_COL].create_index([("email", ASCENDING)], unique=True)
+async def signup_user(username: str, email: str, password: str) -> dict:
+    # 1) ensure username/email not taken
+    existing = await auth_db.users.find_one({"$or": [{"username": username}, {"email": email}]})
+    if existing:
+        # return a clean error later from router (409)
+        raise ValueError("Username or email already exists")
 
-async def create_user(auth_db: AsyncIOMotorDatabase, email: str, password: str) -> dict:
+    # 2) hash password
+    print("DEBUG password repr:", repr(password))
+    print("DEBUG password length:", len(password))
+
+    password_hash = hash_password(password)
+
+    # 3) insert user
     doc = {
-        "email": email.lower(),
-        "hashed_password": hash_password(password),
-        "is_active": True,
+        "username": username,
+        "email": email,
+        "password_hash": password_hash,
+        "role": "user",
         "created_at": datetime.now(timezone.utc),
     }
-    res = await auth_db[USERS_COL].insert_one(doc)
-    doc["_id"] = res.inserted_id
-    return doc
+    result = await auth_db.users.insert_one(doc)
 
-async def get_user_by_email(auth_db: AsyncIOMotorDatabase, email: str) -> dict | None:
-    return await auth_db[USERS_COL].find_one({"email": email.lower()})
+    # 4) return safe user shape
+    return {
+        "id": str(result.inserted_id),
+        "username": username,
+        "email": email,
+        "role": "user",
+    }
 
-def check_password(user: dict, password: str) -> bool:
-    return verify_password(password, user["hashed_password"])
+async def login_user(email: str, password: str) -> dict:
+    user = await auth_db.users.find_one({"email": email})
+    if not user:
+        raise ValueError("Invalid credentials")
+
+    if not verify_password(password, user["password_hash"]):
+        raise ValueError("Invalid credentials")
+
+    token = create_access_token(
+        sub=str(user["_id"]),
+        role=user.get("role", "user"),
+        username=user["username"],
+    )
+    return {"access_token": token, "token_type": "bearer"}
