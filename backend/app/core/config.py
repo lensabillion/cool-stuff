@@ -1,14 +1,15 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
+from pydantic import BaseModel
 
-class Settings(BaseSettings):
-    mongo_uri: str = "mongodb://localhost:27017"
-    mongo_auth_db: str = "auth_db"
-    mongo_app_db: str = "app_db"
+class Settings(BaseModel):
+    # Mongo
+    MONGO_URI: str = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+    MONGO_AUTH_DB: str = os.getenv("MONGO_AUTH_DB", "auth_db")
+    MONGO_APP_DB: str = os.getenv("MONGO_APP_DB", "app_db")
 
-    jwt_secret: str = "change-me"
-    jwt_alg: str = "HS256"
-    access_token_expires_min: int = 60
-
-    model_config = SettingsConfigDict(env_file="backend/.env", extra="ignore")
+    # JWT
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "change-me")
+    JWT_ALG: str = os.getenv("JWT_ALG", "HS256")
+    ACCESS_TOKEN_EXPIRES_MIN: int = int(os.getenv("ACCESS_TOKEN_EXPIRES_MIN", "60"))
 
 settings = Settings()
