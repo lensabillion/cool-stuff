@@ -2,8 +2,14 @@ from datetime import datetime, timezone
 from bson import ObjectId
 
 from app.core.database import app_db
-
+from app.core.cache import cache_delete_prefix
+def _normalize_body(body: str) -> str:
+    body = body.strip()
+    return body
 async def create_post(topic_id: str, body: str, current_user: dict) -> dict:
+    body = _normalize_body(body)
+    if not body:
+        raise ValueError("Body must not be empty")
     # ensure topic exists
     topic = await app_db.topics.find_one({"_id": ObjectId(topic_id)})
     if not topic:
@@ -34,7 +40,7 @@ async def create_post(topic_id: str, body: str, current_user: dict) -> dict:
         {"_id": ObjectId(topic_id)},
         {"$inc": {"post_count": 1}}
     )
-
+    await cache_delete_prefix("topics:posts")
     return {
         "id": str(res.inserted_id),
         "topic_id": topic_id,
@@ -69,6 +75,9 @@ async def list_posts_by_topic(topic_id: str, limit: int = 20, skip: int = 0) -> 
     return posts
 
 async def update_post(post_id: str, body: str, current_user: dict) -> dict:
+    body = _normalize_body(body)
+    if not body:
+        raise ValueError("Body must not be empty")
     post = await app_db.posts.find_one({"_id": ObjectId(post_id)})
     if not post:
         raise ValueError("Post not found")
@@ -83,7 +92,7 @@ async def update_post(post_id: str, body: str, current_user: dict) -> dict:
         {"_id": ObjectId(post_id)},
         {"$set": {"body": body, "updated_at": now}}
     )
-
+    await cache_delete_prefix("topics:posts")
     # return updated shape
     return {
         "id": post_id,
@@ -118,3 +127,4 @@ async def delete_post(post_id: str, current_user: dict) -> None:
         {"_id": post["topic_id"]},
         {"$inc": {"post_count": -1}}
     )
+    await cache_delete_prefix("topics:posts")

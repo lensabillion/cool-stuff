@@ -8,6 +8,7 @@ bcrypt==4.2.0
 python-jose[cryptography]
 email-validator
 pymongo
+redis>=5.0.0
 REQ
 
 
