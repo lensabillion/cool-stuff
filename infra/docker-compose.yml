@@ -1,11 +1,14 @@
 version: "3.9"
 
 services:
+  redis:
+    image: redis:7
+    container_name: coolstuff_redis
+    ports:
+      - "6379:6379"
   mongo:
     image: mongo:7.0
     container_name: coolstuff_mongo
-    ports:
-      - "27017:27017"
     volumes:
       - mongo_data:/data/db
 
@@ -18,13 +21,16 @@ services:
       - "8000:8000"
     depends_on:
       - mongo
+      - redis
     environment:
       MONGO_URI: mongodb://mongo:27017
+      REDIS_URL: redis://redis:6379
       MONGO_AUTH_DB: auth_db
       MONGO_APP_DB: app_db
       JWT_SECRET: change-me-super-secret
       JWT_ALG: HS256
       ACCESS_TOKEN_EXPIRES_MIN: 60
+      CORS_ORIGINS: '["http://localhost:3000","https://cosas-cool.lovable.app/"]'
 
 volumes:
   mongo_data:

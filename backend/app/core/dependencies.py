@@ -4,7 +4,7 @@ from bson import ObjectId
 
 from app.core.database import auth_db
 from app.core.security import decode_access_token
-
+from app.core.redis_client import redis_client
 bearer = HTTPBearer()
 
 async def get_current_user(
@@ -15,6 +15,10 @@ async def get_current_user(
     try:
         payload = decode_access_token(token)
         user_id = payload["sub"]
+        jti = payload.get("jti")
+        if jti:
+            if await redis_client.get(f"bl:{jti}"):
+                raise HTTPException(status_code=401, detail="Token revoked")
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 

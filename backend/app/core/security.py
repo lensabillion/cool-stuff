@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from app.core.config import settings
-
+import secrets
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def hash_password(password: str) -> str:
@@ -20,6 +20,7 @@ def create_access_token(*, sub: str, role: str, username: str) -> str:
         "role": role,        # "admin" or "user"
         "username": username,
         "iat": int(now.timestamp()),
+        "jti": secrets.token_urlsafe(16),
         "exp": int(exp.timestamp()),
     }
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALG)
