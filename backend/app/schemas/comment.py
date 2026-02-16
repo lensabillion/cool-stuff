@@ -29,6 +29,7 @@ class CommentOut(BaseModel):
     id: str
     post_id: str
     created_by: str
+    created_by_username: str | None = None
     body: str
     created_at: datetime
     updated_at: datetime | None
