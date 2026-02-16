@@ -4,13 +4,14 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import HTTPException
 
-from app.core.database import app_db
+from app.core.database import app_db, auth_db
 from app.core.cache import cache_delete_prefix
+
 
 def to_oid(value: str, *, name: str) -> ObjectId:
     try:
         return ObjectId(value)
-    except InvalidId:
+    except (InvalidId, TypeError):
         raise HTTPException(status_code=400, detail=f"Invalid {name}")
 
 
@@ -42,12 +43,17 @@ async def add_comment(post_id: str, body: str, current_user: dict) -> dict:
 
     # increment comment counter on the post
     await app_db.posts.update_one({"_id": post_oid}, {"$inc": {"comment_count": 1}})
+
+    # invalidate caches
     await cache_delete_prefix("posts:comments")
     await cache_delete_prefix("topics:posts")
+    await cache_delete_prefix("me:feed")
+
     return {
         "id": str(res.inserted_id),
         "post_id": post_id,
         "created_by": current_user["id"],
+        "created_by_username": current_user.get("username"),  # ✅ for UI
         "body": body,
         "created_at": now,
         "updated_at": None,
@@ -69,18 +75,36 @@ async def list_comments(post_id: str, limit: int = 50, skip: int = 0) -> list[di
         .limit(limit)
     )
 
-    items = []
+    items: list[dict] = []
+    author_oids: list[ObjectId] = []
+
     async for c in cursor:
-        items.append(
-            {
-                "id": str(c["_id"]),
-                "post_id": str(c["post_id"]),
-                "created_by": str(c["created_by"]),
-                "body": c["body"],
-                "created_at": c["created_at"],
-                "updated_at": c.get("updated_at"),
-            }
+        author_oids.append(c["created_by"])
+        items.append({
+            "id": str(c["_id"]),
+            "post_id": str(c["post_id"]),
+            "created_by": str(c["created_by"]),
+            "created_by_username": None,  # filled below
+            "body": c["body"],
+            "created_at": c["created_at"],
+            "updated_at": c.get("updated_at"),
+        })
+
+    # Attach usernames in one query
+    if author_oids:
+        unique_author_oids = list({oid for oid in author_oids})
+        user_cursor = auth_db.users.find(
+            {"_id": {"$in": unique_author_oids}},
+            {"username": 1},
         )
+
+        id_to_username: dict[str, str] = {}
+        async for u in user_cursor:
+            id_to_username[str(u["_id"])] = u.get("username", "")
+
+        for it in items:
+            it["created_by_username"] = id_to_username.get(it["created_by"])
+
     return items
 
 
@@ -103,12 +127,26 @@ async def update_comment(comment_id: str, body: str, current_user: dict) -> dict
         {"_id": comment_oid},
         {"$set": {"body": body, "updated_at": now}},
     )
+
     await cache_delete_prefix("posts:comments")
     await cache_delete_prefix("topics:posts")
+    await cache_delete_prefix("me:feed")
+
+    # determine username for response (nice for UI)
+    username = None
+    if is_owner:
+        username = current_user.get("username")
+    else:
+        # admin editing someone else's comment -> fetch username of original author (optional)
+        u = await auth_db.users.find_one({"_id": comment["created_by"]}, {"username": 1})
+        if u:
+            username = u.get("username")
+
     return {
         "id": comment_id,
         "post_id": str(comment["post_id"]),
         "created_by": str(comment["created_by"]),
+        "created_by_username": username,
         "body": body,
         "created_at": comment["created_at"],
         "updated_at": now,
@@ -134,5 +172,7 @@ async def delete_comment(comment_id: str, current_user: dict) -> None:
             {"_id": comment["post_id"]},
             {"$inc": {"comment_count": -1}},
         )
+
     await cache_delete_prefix("posts:comments")
     await cache_delete_prefix("topics:posts")
+    await cache_delete_prefix("me:feed")

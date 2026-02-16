@@ -27,9 +27,11 @@ class PostOut(BaseModel):
     id: str
     topic_id: str
     created_by: str
+    created_by_username: str | None = None  
     body: str
     created_at: datetime
     updated_at: datetime | None
     upvote_count: int = 0
     comment_count: int = 0
+
   

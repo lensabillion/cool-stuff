@@ -23,6 +23,7 @@ class TopicOut(BaseModel):
     name: str
     description: str | None
     created_by: str
+    created_by_username: str | None = None  
     created_at: datetime
     subscriber_count: int = 0
     post_count: int = 0
